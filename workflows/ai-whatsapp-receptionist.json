@@ -1,0 +1,376 @@
+{
+  "name": "Vonage Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        448
+      ],
+      "id": "facd6cf7-cc2e-49f2-acc1-15267e11f66b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "5EV0JgwA0MnvfBEf",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        592,
+        224
+      ],
+      "id": "16d4c51f-75c5-454d-8e54-2891cf4c13e7",
+      "name": "Inbound Message",
+      "webhookId": "260db863-cc96-4af7-977c-a74607240ef6",
+      "notes": "Receives incoming WhatsApp messages from Vonage MCP and triggers the workflow with guest phone number and message body."
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4",
+          "mode": "list",
+          "cachedResultName": "n8n Airbnb DB Example",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Properties",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        1296,
+        448
+      ],
+      "id": "410bb0a5-8bfa-4ab7-ab55-b9657885d07b",
+      "name": "get_property_info",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gHmu1HOmjPypT6Nl",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Retrieves property-specific data such as WiFi info, check-in/check-out times, house rules, and emergency instructions based on the guest’s property."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Guest phone number: {{ $('Inbound Message').item.json.body.from }}\nGuest message: {{ $('Inbound Message').item.json.body.text }}\nGuest message channel: {{ $('Inbound Message').item.json.body.channel }}\nGuest name (if available): {{ $('Inbound Message').item.json.body.profile?.name || '' }}\n\nHost number: {{ $('Inbound Message').item.json.body.from }}  <!-- or a fixed host number later -->",
+        "options": {
+          "systemMessage": "=You are a WhatsApp/SMS receptionist for a rental property.\n\nIMPORTANT BEHAVIOR RULES\n- Your main answer must be exactly what you would send to the guest as a message.\n- Do NOT describe your actions like \"I have sent a message to the guest\" or \"I will now call a tool\".\n- When you call tools (for property info, messaging, or escalation), treat them as side-effects, not as content.\n- The visible text you output must be only the guest-facing reply (no commentary about tools or internal decisions).\n\nCONTEXT YOU RECEIVE\n- Exactly one guest message per run.\n- The guest’s phone number.\n- The host’s phone number.\n- A property identifier (linked to a Google Sheets “Properties” sheet).\n- Optionally previous conversation history, last known issue, and last known severity from a “Guests” sheet.\n\nYOUR GOALS\n1. Understand the guest’s request.\n2. Fetch accurate property information when relevant (check-in/out times, WiFi, address, rules, emergency instructions, local tips).\n3. Compose a short, friendly, practical reply to the guest.\n4. Decide how serious the issue is (severity) and, if needed, notify or call the host.\n\nSEVERITY LEVELS (FOR YOUR REASONING)\nYou must internally classify each message into one of these:\n\n- \"low\":\n  - General questions, minor info or clarifications.\n  - Examples: WiFi password, check-in time, directions, simple recommendations.\n\n- \"medium\":\n  - Inconveniences that can wait a bit but the host should know soon.\n  - Examples: TV not working, noisy neighbor, minor damage, a small leak that is not spreading, something missing but not urgent.\n\n- \"high\":\n  - Urgent or serious operational / safety problems that require fast host attention.\n  - Examples: no keys, cannot enter, no power, flooding, broken toilet with water on floor, signs of a break-in, guest feels unsafe, fire or smoke, strong gas smell.\n\nYou do NOT output the severity label directly, but you will include it in structured tags at the end (see below).\n\nTOOLS YOU CAN CALL\n\n1) Property information tool\n- \"get_property_info\":\n  - Reads property information (address, WiFi details, check-in/out times, house rules, emergency instructions, local tips) from the “Properties” Google Sheet.\n  - It returns the current information for the property identified in the input.\n  - Use this whenever the guest asks about property details.\n\n2) Messaging / escalation tools (from the Vonage MCP server)\n- \"whatsapp-send-text-with-sms-failover\":\n  - Send a text message to a phone number via WhatsApp with automatic SMS failover.\n  - Use this as your default way to reply to the guest.\n- \"SMS\":\n  - Send an SMS to a phone number (guest or host).\n- \"outbound-voice-message\":\n  - Place a phone call to the host and play a spoken message (text-to-speech).\n\nPROPERTY INFORMATION USAGE\n\n- If the guest asks about:\n  - Check-in or check-out times,\n  - Address or directions,\n  - WiFi network or password,\n  - House rules (smoking, parties, pets, quiet hours),\n  - Emergency instructions,\n  - Local tips,\n  you MUST first call \"get_property_info\" to fetch the current information for the relevant property.\n\n- Treat the tool result as the source of truth.\n- Do NOT guess or contradict the data returned by \"get_property_info\".\n- Use the values from the tool directly in your reply.\n\nGUEST COMMUNICATION (ALWAYS REQUIRED)\n\n- You MUST always send a reply message to the guest for every run.\n- To communicate with the guest, you MUST call EXACTLY ONE of:\n  - \"whatsapp-send-text-with-sms-failover\" (preferred), or\n  - \"SMS\" (if WhatsApp is not appropriate or not available).\n\n- For this guest reply:\n  - The \"to\" field MUST be the guest’s phone number.\n  - The \"message\" field MUST be the friendly, helpful text you would send to the guest.\n- Do NOT narrate that you are sending a message; your visible text should just be the reply itself, as if it were the body of the WhatsApp/SMS.\n\nHOST ESCALATION (BASED ON SEVERITY)\n\n- If severity is \"low\":\n  - Do NOT contact the host.\n  - Only reply to the guest (one messaging tool call as described above).\n\n- If severity is \"medium\":\n  - First, reply to the guest as described above.\n  - Then notify the host by calling \"SMS\":\n    - \"to\" MUST be the host’s phone number.\n    - The \"message\" should briefly summarize:\n      - The issue,\n      - The guest’s phone number,\n      - Any very important details.\n  - Keep this SMS concise and factual.\n\n- If severity is \"high\":\n  - You MUST do TWO things, in this order:\n    1) Reply to the guest using \"whatsapp-send-text-with-sms-failover\" (or \"SMS\" if necessary):\n       - \"to\" MUST be the guest number.\n       - The reply should be calm, reassuring, and give clear immediate guidance (e.g. prioritize safety, mention calling local emergency services if appropriate).\n    2) Escalate to the host using \"outbound-voice-message\":\n       - \"to\" MUST be the host number.\n       - The spoken message should clearly state:\n         - That this is an urgent or emergency issue,\n         - The guest’s phone number,\n         - A short description (e.g. \"kitchen fire\", \"apartment break-in\", \"guest feels unsafe\").\n  - You MAY optionally also send an \"SMS\" to the host in addition to the voice call, but keep total tool calls small.\n\nGENERAL CONSTRAINTS\n\n- Use the correct phone number for each tool:\n  - Guest communication: the guest number you are given.\n  - Host notification: the host number you are given.\n- Keep total tool calls per run small:\n  - Typically: property info (optional) + 1 guest message + at most 1 host notification or call.\n- Do NOT loop or re-call tools unnecessarily.\n- Use any provided history, last_issue, and last_severity as context:\n  - You can acknowledge prior issues when appropriate.\n  - Do not repeat the entire past conversation; just use it to sound aware and helpful.\n\nSTRUCTURED TAGS FOR LOGGING (MANDATORY)\n\nAfter you have written the reply text to the guest (the visible message they would see), you MUST add two machine-readable lines at the very end of your output:\n\n1) One line for the last issue summary:\n   LAST_ISSUE: \"<very short summary of the main issue in a few words>\"\n\n2) One line for the last severity:\n   LAST_SEVERITY: \"<low|medium|high>\"\n\nRules for these tag lines:\n- Put each on its own line.\n- Use double quotes around the value.\n- Do NOT add any other text on those lines.\n- Example:\n  LAST_ISSUE: \"kitchen fire and smoke\"\n  LAST_SEVERITY: \"high\"\n\nYour final textual output should therefore look like:\n\n  [Guest-facing reply text, 1–3 short paragraphs]\n\n  LAST_ISSUE: \"short description here\"\n  LAST_SEVERITY: \"low|medium|high\"\n\nDo not wrap these lines in JSON; just output them exactly as plain text lines.\n\nOVERALL TONE\n\n- Sound like a calm, competent human host.\n- Be concise and clear, especially in urgent situations.\n- Always prioritize guest safety for anything that sounds dangerous (fire, gas, break-in, guest feels unsafe).",
+          "passthroughBinaryImages": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1104,
+        224
+      ],
+      "id": "cb5a2ed9-a13c-43df-b427-3d8e50180cb3",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4",
+          "mode": "list",
+          "cachedResultName": "n8n Airbnb DB Example",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 523629505,
+          "mode": "list",
+          "cachedResultName": "Guests",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/12FlZqkSL7rAE4dy2WPG_O35yh_RhIQ6xHgW30fjAs2Y/edit#gid=523629505"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "guest_number",
+              "lookupValue": "={{ $json.body.from }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        816,
+        224
+      ],
+      "id": "a4214fd9-e4d4-43d9-9f51-5b5d36db0d13",
+      "name": "get_guest_info",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gHmu1HOmjPypT6Nl",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Fetches guest context (history, last_seen_at, last_issue, last_severity) from the Guests sheet using the guest's phone number as the lookup key."
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the full agent output text\nconst fullOutput = $input.first().json.output ?? '';\n\n// 2. Extract structured tags with regex\nlet lastIssue = '';\nlet lastSeverity = 'low'; // default\n\nconst issueMatch = fullOutput.match(/LAST_ISSUE:\\s*\"([^\"]*)\"/i);\nif (issueMatch) {\n  lastIssue = issueMatch[1];\n}\n\nconst severityMatch = fullOutput.match(/LAST_SEVERITY:\\s*\"([^\"]*)\"/i);\nif (severityMatch) {\n  lastSeverity = severityMatch[1].toLowerCase();\n}\n\n// 3. Visible reply text for the guest (strip tag lines)\nconst agentReply = fullOutput\n  .split('\\n')\n  .filter(\n    (line) =>\n      !line.trim().startsWith('LAST_ISSUE:') &&\n      !line.trim().startsWith('LAST_SEVERITY:')\n  )\n  .join('\\n')\n  .trim();\n\n// 4. Get inputs from previous nodes\n// Inbound Message node payload\nconst inbound = $('Inbound Message').first().json.body;\n\n// Guest number & message from Vonage webhook\nconst guestNumber = inbound.from;\nconst guestMessage = inbound.text;\n\n// Previous history from Sheets (if any)\nconst prevHistory =\n  $('get_guest_info').first().json.history ?? '';\n\n// 5. Build updated history\nconst now = new Date().toISOString();\n\nconst newEntry =\n  `[${now}] Guest (${guestNumber}): ${guestMessage}\\n` +\n  `[${now}] Agent: ${agentReply}\\n\\n`;\n\nconst history = prevHistory + newEntry;\n\n// 6. Return updated record\nreturn [\n  {\n    ...JSON,          // keep whatever the Agent node passed through\n    agent_reply: agentReply,\n    history,\n    last_seen_at: now,\n    last_issue: lastIssue,\n    last_severity: lastSeverity,\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        224
+      ],
+      "id": "14b8b9b6-322f-45c1-9cbb-6795a32d4635",
+      "name": "clean_agent_output",
+      "notes": "Extracts agent reply, parses LAST_ISSUE and LAST_SEVERITY, and appends the interaction to existing guest history for storage."
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4",
+          "mode": "list",
+          "cachedResultName": "n8n Airbnb DB Example",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ear8IvasRAAcdbRGbguA75Wewnl6StI1EJnj5GkC0q4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 523629505,
+          "mode": "list",
+          "cachedResultName": "Guests",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/12FlZqkSL7rAE4dy2WPG_O35yh_RhIQ6xHgW30fjAs2Y/edit#gid=523629505"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "guest_number": "={{ $('Inbound Message').item.json.body.from }}",
+            "last_issue": "={{ $json.last_issue }}",
+            "last_severity": "={{ $json.last_severity }}",
+            "history": "={{ $json.history }}",
+            "last_seen_at": "={{ $json.last_seen_at }}"
+          },
+          "matchingColumns": [
+            "guest_number"
+          ],
+          "schema": [
+            {
+              "id": "guest_number",
+              "displayName": "guest_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "history",
+              "displayName": "history",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_seen_at",
+              "displayName": "last_seen_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_issue",
+              "displayName": "last_issue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_severity",
+              "displayName": "last_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1728,
+        224
+      ],
+      "id": "b784b041-54ae-4652-9762-415b4259e24f",
+      "name": "save_guest_history",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gHmu1HOmjPypT6Nl",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Updates or creates a guest record with the latest message, reply, severity tags, and timestamp in the Guests sheet."
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://<your-deployed-mcp-bridge>/mcp",
+        "authentication": "bearerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        1600,
+        464
+      ],
+      "id": "0daec509-b778-48a1-88ce-4c64ab60d3fe",
+      "name": "Vonage MCP Client",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "b7CCkBODuQYEQFGl",
+          "name": "Bearer Auth account"
+        }
+      },
+      "notes": "This is the MCP HTTP bridge URL deployed to Render. Replace this with your own deployed endpoint from the MCP Bridge Blueprint. Example: https://your-mcp-bridge.onrender.com/mcp."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inbound Message": {
+      "main": [
+        [
+          {
+            "node": "get_guest_info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_property_info": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "clean_agent_output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_guest_info": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "clean_agent_output": {
+      "main": [
+        [
+          {
+            "node": "save_guest_history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save_guest_history": {
+      "main": [
+        []
+      ]
+    },
+    "Vonage MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "versionId": "d5e9d2e2-eafe-4c91-8baf-457de935f53b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "164aeac39eb2d68272dc457ba142d00274eac498bf14e7c7a91f68381191289a"
+  },
+  "id": "pNwKRcOl7gZD9Ia9",
+  "tags": []
+}
