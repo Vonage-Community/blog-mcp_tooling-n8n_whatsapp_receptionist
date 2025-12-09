@@ -9,6 +9,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",
     "express": "^4.19.0",
-    "@vonage/vonage-mcp-server-api-bindings": "^0.1.0"
+    "@vonage/vonage-mcp-server-api-bindings": "^1.2.0"
   }
 }
