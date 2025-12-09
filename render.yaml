@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: vonage-mcp-http-bridge
+    env: node
+    region: oregon   # or preferred region
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: MCP_AUTH_TOKEN
+        sync: false
+      - key: VONAGE_API_KEY
+        sync: false
+      - key: VONAGE_API_SECRET
+        sync: false
+      - key: VONAGE_APPLICATION_ID
+        sync: false
+      - key: VONAGE_PRIVATE_KEY64
+        sync: false
+      - key: VONAGE_VIRTUAL_NUMBER
+        sync: false
+      - key: VONAGE_WHATSAPP_NUMBER
+        sync: false
