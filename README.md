@@ -17,34 +17,32 @@ This README focuses on the **quickstart** path so you can get the demo running i
 
 You’ll need:
 
-- **n8n**  
+- **[n8n account](https://docs.n8n.io/manage-cloud/overview/)**  
   - n8n Cloud or self‑hosted instance.
   - MCP access **enabled** in `Settings → MCP Access`.
 
-- **Vonage account**  
-  - API key + secret.
-  - A **Vonage Application** with:
-    - **Messages** capability (WhatsApp enabled and linked).
-    - **Voice** capability.
-  - At least one WhatsApp‑enabled number.
+- **[Vonage account](https://developer.vonage.com/sign-up)**  
+  - [API key + secret](https://dashboard.vonage.com/settings).
+  - A Vonage Application
+  - A WhatsApp‑enabled number.
 
-- **OpenAI (or other model provider)**  
+- **[OpenAI account](https://platform.openai.com/docs/overview) (or other model provider)**  
   - This workflow is configured for `gpt-4.1-mini` via the `OpenAI Chat Model` node.
   - You can swap to another provider if you prefer.
 
-- **Google account**  
+- **[Google account](https://workspace.google.com/products/sheets/)**  
   - Access to Google Sheets and the ability to create a copy of the example sheet.
 
-- **Vonage MCP Bridge deployed to Render**  
-  - From the separate repo:  
-    https://github.com/ruskibenya/vonage-mcp-http-bridge  
-  - Use the “Deploy to Render” button or [render.yaml](cci:7://file:///Users/baronov/code/ruskibenya/vonage-mcp-http-bridge/render.yaml:0:0-0:0) blueprint there.
+- **Vonage MCP bridge (hosted on Render)**  
+  The workflow expects a simple HTTP `/mcp` endpoint that exposes the Vonage MCP tools.  
+  You’ll deploy this as a tiny Node.js service on Render using the [render.yaml](https://github.com/Vonage-Community/blog-mcp_tooling-n8n_whatsapp_receptionist/blob/main/render.yaml) blueprint in this repo  
+  (see step **3d** below for the deploy instructions).
 
 ---
 
 ## 2. Import the workflow into n8n
 
-1. Download [workflows/ai-whatsapp-receptionist.json](cci:7://file:///Users/baronov/code/ruskibenya/vonage-mcp-http-bridge-github/workflows/ai-whatsapp-receptionist.json:0:0-0:0) from this repo.
+1. Download [workflows/ai-whatsapp-receptionist.json](https://github.com/Vonage-Community/blog-mcp_tooling-n8n_whatsapp_receptionist/blob/main/workflows/ai-whatsapp-receptionist.json) from this repo.
 2. In n8n, go to **Workflows → Import**.
 3. Choose **Import from file** and select the JSON file.
 4. Save the workflow and give it a name (e.g. `AI WhatsApp Receptionist`).
@@ -61,7 +59,7 @@ Work through these sub‑steps in order.
 1. In the Vonage dashboard, create a new **Application** (or reuse an existing one):
    - Enable **Messages**.
    - Enable **Voice**.
-   - For Messages webhooks, set temporary placeholders for now (you’ll replace inbound later).
+   - For Messages webhooks, set temporary https placeholders for now (you’ll replace inbound later).
 2. Link your **WhatsApp Business Account (WABA)** to this application.
 3. Note down:
    - **API key** and **API secret**
@@ -115,16 +113,20 @@ Make sure all Sheets nodes use **your** Google Sheets credential.
 4. Test the node if your n8n version allows it.
 
 ---
-
 ### 3d. Deploy the Render MCP bridge and update the MCP Client node
 
-The AI Agent talks to Vonage tools via the MCP bridge.
+The AI Agent doesn’t talk to Vonage APIs directly. Instead, it calls a small “bridge” service over HTTP, and that bridge starts the Vonage MCP tooling server and exposes it as a single `/mcp` JSON‑RPC endpoint. We’ll host that bridge on Render so n8n has a stable, public URL to call.
 
-1. Follow the quickstart in the bridge repo:  
-   https://github.com/ruskibenya/vonage-mcp-http-bridge
-   - Deploy to Render with the provided blueprint.
-   - Set all required env vars (`MCP_AUTH_TOKEN`, `VONAGE_*`).
-   - Confirm `/mcp` works with the JSON‑RPC `tools/list` curl test.
+1. Deploy the bridge to Render from this repo:  
+   https://github.com/Vonage-Community/blog-mcp_tooling-n8n_whatsapp_receptionist  
+
+   Use the Render blueprint and button in this repo:
+
+   [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Vonage-Community/blog-mcp_tooling-n8n_whatsapp_receptionist)
+
+   During deployment:
+   - Set all required env vars (`MCP_AUTH_TOKEN`, `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_APPLICATION_ID`, `VONAGE_PRIVATE_KEY64`, `VONAGE_VIRTUAL_NUMBER`, `VONAGE_WHATSAPP_NUMBER`).
+   - After deploy, confirm `/mcp` works with the JSON‑RPC `tools/list` curl test.
 
 2. In n8n, open the **Vonage MCP Client** node:
    - **Server Transport**: `HTTP Streamable` (or `HTTP` depending on your n8n version).
@@ -154,22 +156,6 @@ In the first version of the workflow, the **host number** is temporarily set to 
     - The guest’s WhatsApp/SMS messages go to the guest number.
     - Medium/high severity issues are escalated to your host number via SMS and/or outbound voice calls.
 
----
-## Supporting files in this repo
-
-- **[workflows/ai-whatsapp-receptionist.json](cci:7://file:///Users/baronov/code/ruskibenya/vonage-mcp-http-bridge-github/workflows/ai-whatsapp-receptionist.json:0:0-0:0)**  
-  Import this into n8n for the full workflow.
-
-- **[prompts/receptionist-system-prompt.md](cci:7://file:///Users/baronov/code/ruskibenya/vonage-mcp-http-bridge-github/prompts/receptionist-system-prompt.md:0:0-0:0)**  
-  Full system prompt used in the AI Agent node.
-
-- **[prompts/function-node-script.js](cci:7://file:///Users/baronov/code/ruskibenya/vonage-mcp-http-bridge-github/prompts/function-node-script.js:0:0-0:0)**  
-  Code used in the Function/Code node to:
-  - Strip `LAST_ISSUE` / `LAST_SEVERITY` tags.  
-  - Append to guest `history`.  
-  - Update `last_seen_at`, `last_issue`, `last_severity`.
-
-These files are mainly for reference and customization; the imported workflow already contains their contents.
 ---
 ## Summary
 
