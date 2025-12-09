@@ -64,96 +64,45 @@ app.post('/mcp', async (req, res) => {
   if (!checkAuth(req, res)) return;
 
   const body = req.body || {};
+  const { id, method, params } = body;
 
-  // --- Branch 1: JSON-RPC mode (used by n8n MCP Client) ---
-  if (body.jsonrpc === '2.0' && typeof body.method === 'string') {
-    const { id, method, params } = body;
-
-    try {
-      const client = await getMcpClient();
-
-      // n8n sends this after connecting; just acknowledge
-      if (method === 'notifications/initialized') {
-        res.status(200).end();
-        return;
-      }
-
-      if (method === 'tools/list') {
-        const toolsResponse = await client.listTools();
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          result: { tools: toolsResponse.tools || [] },
-        });
-        return;
-      }
-
-      if (method === 'tools/call') {
-        const { name, arguments: toolArgs } = params || {};
-        if (!name) {
-          res.status(400).json({
-            jsonrpc: '2.0',
-            id,
-            error: { code: -32602, message: 'Missing tool name in params' },
-          });
-          return;
-        }
-
-        const result = await client.callTool({
-          name,
-          arguments: toolArgs || {},
-        });
-
-        res.json({
-          jsonrpc: '2.0',
-          id,
-          result,
-        });
-        return;
-      }
-
-      // Unknown JSON-RPC method
-      res.status(400).json({
-        jsonrpc: '2.0',
-        id,
-        error: { code: -32601, message: `Unsupported method: ${method}` },
-      });
-      return;
-    } catch (error) {
-      console.error('Error handling JSON-RPC /mcp request:', error);
-      res.status(500).json({
-        jsonrpc: '2.0',
-        id: body.id ?? null,
-        error: {
-          code: -32603,
-          message: 'Internal MCP bridge error',
-          data: error.message,
-        },
-      });
-      return;
-    }
-  }
-
-  // --- Branch 2: Simple mode (manual curl: { "method": "list_tools" }) ---
-  const { method, name, arguments: toolArgs } = body;
-
-  if (!method) {
-    res.status(400).json({ error: 'Missing method field in request body' });
+  // Must be JSON-RPC 2.0
+  if (body.jsonrpc !== '2.0' || typeof method !== 'string') {
+    res.status(400).json({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: { code: -32600, message: 'Invalid JSON-RPC request' },
+    });
     return;
   }
 
   try {
     const client = await getMcpClient();
 
-    if (method === 'list_tools') {
-      const toolsResponse = await client.listTools();
-      res.json({ tools: toolsResponse.tools || [] });
+    // n8n initialization notification
+    if (method === 'notifications/initialized') {
+      res.status(200).end();
       return;
     }
 
-    if (method === 'call_tool') {
+    if (method === 'tools/list') {
+      const toolsResponse = await client.listTools();
+      res.json({
+        jsonrpc: '2.0',
+        id,
+        result: { tools: toolsResponse.tools || [] },
+      });
+      return;
+    }
+
+    if (method === 'tools/call') {
+      const { name, arguments: toolArgs } = params || {};
       if (!name) {
-        res.status(400).json({ error: 'Missing tool name for call_tool' });
+        res.status(400).json({
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32602, message: 'Missing tool name in params' },
+        });
         return;
       }
 
@@ -161,16 +110,31 @@ app.post('/mcp', async (req, res) => {
         name,
         arguments: toolArgs || {},
       });
-      res.json(result);
+
+      res.json({
+        jsonrpc: '2.0',
+        id,
+        result,
+      });
       return;
     }
 
-    res.status(400).json({ error: `Unsupported method: ${method}` });
+    // Unknown JSON-RPC method
+    res.status(400).json({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32601, message: `Unsupported method: ${method}` },
+    });
   } catch (error) {
-    console.error('Error handling simple /mcp request:', error);
+    console.error('Error handling JSON-RPC /mcp request:', error);
     res.status(500).json({
-      error: 'Internal MCP bridge error',
-      details: error.message,
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: {
+        code: -32603,
+        message: 'Internal MCP bridge error',
+        data: error.message,
+      },
     });
   }
 });
